@@ -148,6 +148,25 @@ button:focus-visible{outline:2px solid var(--brass); outline-offset:2px}
 .authform input:focus-visible{outline:2px solid var(--brass); outline-offset:1px}
 .authbar .btn{flex:0 0 auto; padding:6px 11px}
 .authmsg{font-family:var(--f-mono); font-size:10.5px; color:var(--arty); letter-spacing:.03em}
+.diagbox{
+  border:1px solid var(--line); border-radius:4px; background:var(--surface);
+  padding:12px 14px; font-family:var(--f-mono); font-size:11.5px; line-height:1.9; color:var(--ink-2);
+}
+.diagbox .ok{color:var(--accent)}
+.diagbox .bad{color:var(--arty)}
+.diagbox .hint{
+  display:block; margin-top:8px; padding-top:8px; border-top:1px solid var(--line-2);
+  font-family:var(--f-body); font-size:12.5px; color:var(--ink); line-height:1.6;
+}
+.waitbox{padding:44px 20px; text-align:center}
+.waitbox .wt{
+  font-family:var(--f-display); font-weight:700; text-transform:uppercase;
+  font-size:clamp(20px,5vw,28px); letter-spacing:.04em; color:var(--ink-2); line-height:1.15;
+}
+.waitbox .ws{
+  margin:12px auto 0; max-width:46ch; font-family:var(--f-body); font-size:13px;
+  color:var(--ink-3); line-height:1.65;
+}
 .tabs{display:flex; gap:6px; flex-wrap:wrap; border-bottom:1px solid var(--line); padding-bottom:0}
 .tabs button{
   font-family:var(--f-mono); font-size:11px; letter-spacing:.1em; text-transform:uppercase;
@@ -749,6 +768,18 @@ footer{font-family:var(--f-mono); font-size:11px; color:var(--ink-3); letter-spa
   .col:nth-child(-n+2){border-bottom:1px solid var(--line-2)}
 }
 @media (max-width:720px){
+  .btn{padding:11px 12px; font-size:11px}
+  .tabs button{padding:12px 14px; font-size:11.5px}
+  .mc-ctl .btn{padding:11px 13px; font-size:11px}
+  .goalbtn{padding:9px 14px; font-size:11px}
+  .mc-add select,.mc-add input,.mc-extra select,.mc-extra input,.mc-res select,.mc-res .pn{
+    font-size:15px; padding:9px 8px;   /* 15px stops iOS zooming the page on focus */
+  }
+  .authform input{font-size:16px; padding:10px 10px; width:100%}
+  .authform{width:100%}
+  .authbar{gap:6px}
+  .sc{width:46px; padding:9px 2px; font-size:15px}
+  .bs{width:40px; padding:8px 2px; font-size:14px}
   .stage{grid-template-columns:1fr; gap:18px; padding:20px}
   .stage-r{min-width:0}
   .pools{grid-template-columns:1fr}
@@ -817,9 +848,20 @@ footer{font-family:var(--f-mono); font-size:11px; color:var(--ink-3); letter-spa
       <input type="password" id="authpass" placeholder="Password" autocomplete="current-password">
       <button class="btn" type="submit" id="authgo">Sign in</button>
     </form>
+    <button class="btn" id="diagbtn">Check connection</button>
     <button class="btn" id="authout" hidden>Sign out</button>
     <span class="authmsg" id="authmsg"></span>
   </div>
+
+  <div class="diagbox" id="diagbox" hidden></div>
+
+  <section class="panel" id="waiting" data-panel="waiting" hidden>
+    <div class="waitbox">
+      <div class="wt">The draw has not been held yet</div>
+      <div class="ws">Pools, fixtures and live scores appear here once the organiser has run it.
+        This page updates on its own &mdash; leave it open, or come back later.</div>
+    </div>
+  </section>
 
   <nav class="tabs" id="tabs"></nav>
 
@@ -3039,7 +3081,8 @@ function renderTabs(){
   var live = liveCount();
   var drawn = picks.length >= SEQ.length;
   $('tabs').innerHTML = TABS.filter(function(t){
-    if (t.k === 'draw' && (STATE.locked || !isAdmin)) return false;
+    if (t.k === 'waiting') return false;
+  if (t.k === 'draw' && (STATE.locked || !isAdmin)) return false;
     if (t.k === 'table' && !isLeague()) return false;
     if (t.k !== 'draw' && t.k !== 'squads' && !drawn) return false;
     return true;
@@ -3051,6 +3094,14 @@ function renderTabs(){
 
 function applyView(){
   var drawn = picks.length >= SEQ.length;
+  /* nothing drawn and no rights to draw: say so plainly instead of showing dead controls */
+  var waiting = !drawn && !isAdmin;
+  if (waiting) VIEW = 'waiting';
+  else if (VIEW === 'waiting') VIEW = drawn ? 'today' : 'draw';
+  /* a viewer must never be left looking at the draw screen */
+  if (VIEW === 'draw' && !isAdmin) VIEW = drawn ? (liveCount() ? 'live' : 'today') : 'waiting';
+  var wp = $('waiting');
+  if (wp) wp.hidden = !waiting;
   var panels = document.querySelectorAll('[data-panel]');
   for (var i = 0; i < panels.length; i++){
     var el = panels[i], p = el.getAttribute('data-panel');
@@ -3828,6 +3879,73 @@ function applyAuthState(){
   applyView();
 }
 
+/* Says exactly which part of the chain is broken, so a problem on a match day can be
+   found in seconds instead of guessed at. */
+function runDiagnostics(){
+  var box = $('diagbox');
+  box.hidden = false;
+  if (!dbOn()){
+    box.innerHTML = '<span class="bad">No database configured.</span>' +
+      '<span class="hint">This copy stores everything in this browser only. Nothing is shared.</span>';
+    return;
+  }
+  box.innerHTML = 'Checking…';
+  var lines = [], hint = '';
+  var tables = ['tournament', 'matches', 'squads'];
+  var reads = tables.map(function(t){
+    return dbFetch('/rest/v1/' + t + '?select=*&limit=1')
+      .then(function(r){ return {t:t, ok:r.ok, code:r.status}; },
+            function(){ return {t:t, ok:false, code:'no connection'}; });
+  });
+  Promise.all(reads).then(function(rr){
+    rr.forEach(function(x){
+      lines.push('read ' + x.t + ': ' + (x.ok ? '<span class="ok">ok</span>'
+        : '<span class="bad">failed (' + x.code + ')</span>'));
+    });
+    if (!dbToken){
+      lines.push('signed in: <span class="bad">no</span>');
+      hint = 'You are watching only. Sign in above with an officer account to run the draw or update matches.';
+      box.innerHTML = lines.join('<br>') + '<span class="hint">' + hint + '</span>';
+      return;
+    }
+    lines.push('signed in: <span class="ok">yes (' + esc(dbEmail || '') + ')</span>');
+    /* write test, using the real current values so nothing junk is left behind */
+    var writes = [
+      dbFetch('/rest/v1/tournament', {method:'POST', headers:{'Prefer':'resolution=merge-duplicates'},
+        body: JSON.stringify([{id:1, at: STATE.metaAt || Date.now(),
+          data:{locked:STATE.locked, picks:STATE.picks, cfg:STATE.cfg, halfMin:STATE.halfMin}}])})
+        .then(function(r){ return r.ok ? {t:'tournament', ok:true}
+          : r.text().then(function(b){ return {t:'tournament', ok:false, code:r.status, msg:b}; }); },
+          function(){ return {t:'tournament', ok:false, code:'no connection'}; }),
+      dbFetch('/rest/v1/squads', {method:'POST', headers:{'Prefer':'resolution=merge-duplicates'},
+        body: JSON.stringify([{team_no:1, at:Date.now(), players: squadOf(1)}])})
+        .then(function(r){ return r.ok ? {t:'squads', ok:true}
+          : r.text().then(function(b){ return {t:'squads', ok:false, code:r.status, msg:b}; }); },
+          function(){ return {t:'squads', ok:false, code:'no connection'}; })
+    ];
+    Promise.all(writes).then(function(ww){
+      var failed = null;
+      ww.forEach(function(x){
+        lines.push('write ' + x.t + ': ' + (x.ok ? '<span class="ok">ok</span>'
+          : '<span class="bad">refused (' + x.code + ')</span>'));
+        if (!x.ok && !failed) failed = x;
+      });
+      if (failed){
+        var m = '';
+        try { m = (JSON.parse(failed.msg || '{}').message) || ''; } catch (e) {}
+        hint = 'The database refused a write to <b>' + esc(failed.t) + '</b>' +
+          (m ? ' — ' + esc(m) : '') +
+          '. Its write policy is probably missing. In Supabase run: ' +
+          'create policy write_' + esc(failed.t.charAt(0)) + ' on ' + esc(failed.t) +
+          ' for all to authenticated using (true) with check (true);';
+      } else {
+        hint = 'Everything is working. Anything you record is saved for everyone.';
+      }
+      box.innerHTML = lines.join('<br>') + '<span class="hint">' + hint + '</span>';
+    });
+  });
+}
+
 function dbStartPolling(){
   if (!dbOn() || dbPolling) return;
   dbPolling = setInterval(function(){
@@ -4408,6 +4526,8 @@ $('authform').addEventListener('submit', function(e){
     });
   });
 });
+
+$('diagbtn').addEventListener('click', runDiagnostics);
 
 $('authout').addEventListener('click', function(){
   dbSignOut();
