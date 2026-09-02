@@ -843,7 +843,8 @@ footer{font-family:var(--f-mono); font-size:11px; color:var(--ink-3); letter-spa
 
   <div class="authbar" id="authbar" hidden>
     <span class="who" id="authwho"></span>
-    <form class="authform" id="authform">
+    <button class="btn linky" id="authopen">Officer sign in</button>
+    <form class="authform" id="authform" hidden>
       <input type="email" id="authemail" placeholder="Officer email" autocomplete="username">
       <input type="password" id="authpass" placeholder="Password" autocomplete="current-password">
       <button class="btn" type="submit" id="authgo">Sign in</button>
@@ -3082,9 +3083,8 @@ function renderTabs(){
   var drawn = picks.length >= SEQ.length;
   $('tabs').innerHTML = TABS.filter(function(t){
     if (t.k === 'waiting') return false;
-  if (t.k === 'draw' && (STATE.locked || !isAdmin)) return false;
-    if (t.k === 'table' && !isLeague()) return false;
-    if (t.k !== 'draw' && t.k !== 'squads' && !drawn) return false;
+    if (t.k === 'draw' && (STATE.locked || !isAdmin)) return false;
+    if (t.k === 'table' && (!isLeague() || !drawn)) return false;
     return true;
   }).map(function(t){
     return '<button type="button" data-k="' + t.k + '"' + (VIEW === t.k ? ' class="on"' : '') + '>' +
@@ -3095,18 +3095,20 @@ function renderTabs(){
 function applyView(){
   var drawn = picks.length >= SEQ.length;
   /* nothing drawn and no rights to draw: say so plainly instead of showing dead controls */
-  var waiting = !drawn && !isAdmin;
-  if (waiting) VIEW = 'waiting';
-  else if (VIEW === 'waiting') VIEW = drawn ? 'today' : 'draw';
+  if (VIEW === 'waiting') VIEW = drawn ? 'today' : 'live';
   /* a viewer must never be left looking at the draw screen */
-  if (VIEW === 'draw' && !isAdmin) VIEW = drawn ? (liveCount() ? 'live' : 'today') : 'waiting';
+  if (VIEW === 'draw' && !isAdmin) VIEW = drawn ? (liveCount() ? 'live' : 'today') : 'live';
+  /* nothing drawn yet: keep the tabs on show, and let whichever one is open say why
+     it is empty rather than presenting a bare panel or a sign-in wall */
+  var waiting = !drawn && VIEW !== 'draw' && VIEW !== 'squads';
   var wp = $('waiting');
   if (wp) wp.hidden = !waiting;
   var panels = document.querySelectorAll('[data-panel]');
   for (var i = 0; i < panels.length; i++){
     var el = panels[i], p = el.getAttribute('data-panel');
     var show = (p === VIEW);
-    if (show && (p === 'today' || p === 'live') && !drawn) show = false;
+    if (waiting && p !== 'waiting') show = false;
+    if (p === 'waiting') show = waiting;
     if (show && (p === 'fixtures' || p === 'table' || p === 'bracket')){
       show = el.classList.contains('on');
     }
@@ -3857,17 +3859,21 @@ function dbFlush(){
   });
 }
 
+var authOpen = false;
+
 function renderAuth(){
   var bar = $('authbar');
   if (!bar) return;
   bar.hidden = !dbOn();
   if (!dbOn()) return;
   var inSess = !!dbToken;
-  $('authform').hidden = inSess;
+  $('authform').hidden = inSess || !authOpen;
+  $('authopen').hidden = inSess || authOpen;
   $('authout').hidden = !inSess;
+  $('diagbtn').hidden = !inSess && !authOpen;
   $('authwho').innerHTML = inSess
     ? 'Signed in as <b>' + esc(dbEmail || '') + '</b>'
-    : 'Sign in to update matches. Everyone else may watch without signing in.';
+    : 'Live scores for everyone &mdash; no sign in needed.';
 }
 
 function applyAuthState(){
@@ -4527,6 +4533,13 @@ $('authform').addEventListener('submit', function(e){
   });
 });
 
+$('authopen').addEventListener('click', function(){
+  authOpen = true;
+  renderAuth();
+  var e = $('authemail');
+  if (e) e.focus();
+});
+
 $('diagbtn').addEventListener('click', runDiagnostics);
 
 $('authout').addEventListener('click', function(){
@@ -4589,10 +4602,21 @@ $('lockbtn').addEventListener('click', function(){
   STATE.picks = picks.slice();
   STATE.cfg = captureCfg();
   STATE.metaAt = Date.now();
-  if (dbOn()) dbQueueMeta();
   setLockUi();
   saveState();
-  publishState();
+  if (dbOn()){
+    dbQueueMeta();
+    dbFlush().then(function(ok){
+      setShareLabel();
+      if (!ok){
+        alert('The draw was NOT saved to the shared database.\n\n' +
+          'It is held on this device only, so other phones will not see it.\n' +
+          'Open the sign-in bar and press "Check connection" to see why.');
+      }
+    });
+  } else {
+    publishState();
+  }
   setView('today');
 });
 
