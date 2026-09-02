@@ -3431,8 +3431,13 @@ var TABS = [
 ];
 
 function liveCount(){
-  var n = 0;
+  var n = 0, known = {};
+  /* only matches that are actually on the current fixture list count. A record left
+     behind by an earlier build has nothing to render, so it must not light the lamp
+     on the Live tab either. */
+  (fixtures || []).forEach(function(m){ known[liveKey(m)] = 1; });
   for (var k in STATE.live){
+    if (!known[k]) continue;
     if (STATE.live[k].status === 'live' || STATE.live[k].status === 'ht') n++;
   }
   return n;
