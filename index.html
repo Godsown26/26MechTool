@@ -947,7 +947,41 @@ tr.q td.tm{font-weight:700}
   font-family:var(--f-display); font-weight:700; text-transform:uppercase; font-size:26px;
   line-height:1.05; color:var(--ink-3); overflow-wrap:break-word;
 }
-.bchamp.won .who{color:var(--brass)}
+.bchamp.won{position:relative; overflow:hidden}
+.bchamp.won .who{
+  color:var(--brass);
+  background:linear-gradient(100deg, var(--brass),
+    color-mix(in srgb, var(--pC) 65%, var(--brass)) 45%, var(--brass));
+  -webkit-background-clip:text; background-clip:text;
+  -webkit-text-fill-color:transparent;
+}
+.bchamp.won::after{
+  content:''; position:absolute; top:0; bottom:0; left:0; width:42%;
+  background:linear-gradient(100deg, transparent, rgba(255,255,255,.20), transparent);
+  animation:champShine 3.2s ease-in-out infinite; pointer-events:none;
+}
+.bchamp.won.celebrate{animation:champPop .8s cubic-bezier(.2,1.5,.4,1) both}
+.bchamp .trophy{
+  display:inline-block; font-size:20px; margin-right:7px; vertical-align:-3px;
+  animation:trophyBob 2.4s ease-in-out infinite; -webkit-text-fill-color:initial;
+}
+.confetti{position:fixed; inset:0; width:100%; height:100%; pointer-events:none; z-index:9999}
+@keyframes champPop{
+  0%{transform:scale(.84); opacity:.2}
+  55%{transform:scale(1.05)}
+  100%{transform:scale(1); opacity:1}
+}
+@keyframes champShine{
+  0%{transform:translateX(-60%)}
+  60%,100%{transform:translateX(300%)}
+}
+@keyframes trophyBob{
+  0%,100%{transform:translateY(0) rotate(-6deg)}
+  50%{transform:translateY(-5px) rotate(6deg)}
+}
+@media (prefers-reduced-motion:reduce){
+  .bchamp.won::after,.bchamp .trophy,.bchamp.won.celebrate{animation:none}
+}
 .b3rd{max-width:none}
 @media (max-width:720px){
   .btail{grid-template-columns:1fr}
@@ -2921,6 +2955,104 @@ function bracketCard(m, label, R, num, cls){
     '</div>';
 }
 
+/* The moment the championship is won: paper falls from above with a burst from each
+   side, the card swells, the final whistle sounds and the winners are announced.
+   It clears itself away and leaves nothing behind. */
+function confettiBurst(){
+  if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  var cv = document.createElement('canvas');
+  cv.className = 'confetti';
+  document.body.appendChild(cv);
+  var ctx = cv.getContext('2d');
+  if (!ctx){ cv.parentNode.removeChild(cv); return; }
+  var dpr = Math.min(window.devicePixelRatio || 1, 2);
+  var w = window.innerWidth, h = window.innerHeight;
+  cv.width = w * dpr;
+  cv.height = h * dpr;
+  ctx.scale(dpr, dpr);
+
+  var css = getComputedStyle(document.documentElement);
+  var cols = ['--pA', '--pB', '--pC', '--pD', '--brass', '--hot'].map(function(v){
+    return (css.getPropertyValue(v) || '').trim() || '#2FBF71';
+  });
+  cols.push('#ffffff');
+
+  /* Everything below is in pixels per second, not per frame, so the burst lasts the
+     same seven-odd seconds on a 60Hz screen and on a 120Hz one. */
+  var bits = [];
+  function make(x, y, vx, vy){
+    bits.push({
+      x:x, y:y, vx:vx, vy:vy,
+      w:5 + Math.random() * 6, h:8 + Math.random() * 8,
+      c:cols[Math.floor(Math.random() * cols.length)],
+      rot:Math.random() * Math.PI, spin:(Math.random() - 0.5) * 7,
+      life:0, max:5.5 + Math.random() * 2.5
+    });
+  }
+  var i;
+  /* spread well above the fold so the shower keeps arriving rather than passing by
+     in one sheet */
+  for (i = 0; i < 190; i++){
+    make(Math.random() * w, -20 - Math.random() * h * 2.2,
+         (Math.random() - 0.5) * 70, 90 + Math.random() * 90);
+  }
+  for (i = 0; i < 55; i++){                  /* a cannon from each side */
+    make(-10, h * 0.85, 260 + Math.random() * 300, -(300 + Math.random() * 330));
+    make(w + 10, h * 0.85, -(260 + Math.random() * 300), -(300 + Math.random() * 330));
+  }
+
+  var t0 = 0, prev = 0;
+  function step(now){
+    if (!t0){ t0 = prev = now; }
+    var dt = Math.min((now - prev) / 1000, 0.05);   /* a dropped frame must not teleport */
+    prev = now;
+    ctx.clearRect(0, 0, w, h);
+    var alive = 0;
+    for (var i = 0; i < bits.length; i++){
+      var b = bits[i];
+      b.life += dt;
+      if (b.life > b.max) continue;
+      if (b.y > h + 30) continue;            /* already past the bottom, never coming back */
+      alive++;
+      b.vy += 300 * dt;                      /* gravity */
+      if (b.vy > 230) b.vy = 230;            /* paper does not accelerate for ever */
+      b.vx *= Math.pow(0.5, dt);             /* air */
+      b.x += (b.vx + Math.sin(b.life * 3 + b.rot) * 26) * dt;   /* a little sway */
+      b.y += b.vy * dt;
+      b.rot += b.spin * dt;
+      ctx.save();
+      ctx.translate(b.x, b.y);
+      ctx.rotate(b.rot);
+      ctx.globalAlpha = Math.max(0, Math.min(1, (1 - b.life / b.max) * 3));
+      ctx.fillStyle = b.c;
+      ctx.fillRect(-b.w / 2, -b.h / 2, b.w, b.h);
+      ctx.restore();
+    }
+    if (alive && now - t0 < 9000) requestAnimationFrame(step);
+    else if (cv.parentNode) cv.parentNode.removeChild(cv);
+  }
+  requestAnimationFrame(step);
+}
+
+/* null until a bracket has been drawn once, so a page that simply opens with the
+   result already in it stays quiet — only a title won in front of you celebrates */
+var knownChampion = null, championSeen = false;
+
+function celebrateChampion(name){
+  confettiBurst();
+  var card = document.querySelector('.bchamp.won');
+  if (card){
+    card.classList.remove('celebrate');
+    void card.offsetWidth;                   /* restart the animation */
+    card.classList.add('celebrate');
+    if (VIEW === 'bracket') card.scrollIntoView({block:'center', behavior:'smooth'});
+  }
+  sfxComplete();
+  setTimeout(function(){
+    announce(spokenName(name) + ' are the champions.');
+  }, 2600);
+}
+
 function renderBracket(){
   var on = picks.length >= SEQ.length;
   $('bracket').classList.toggle('on', on);
@@ -2948,9 +3080,14 @@ function renderBracket(){
 
   var champ = R.decide(M('CF'));
   var third = R.decide(M('C34'));
+  var cname = champ ? champ.win : null;
+  var newlyWon = championSeen && cname && cname !== knownChampion;
+  knownChampion = cname;
+  championSeen = true;
+  if (newlyWon) setTimeout(function(){ celebrateChampion(cname); }, 60);
   $('bktail').innerHTML =
     '<div class="bchamp' + (champ ? ' won' : '') + '">' +
-      '<span class="lbl">Champions</span>' +
+      '<span class="lbl">' + (champ ? '<span class="trophy">&#127942;</span>' : '') + 'Champions</span>' +
       '<span class="who">' + esc(champ ? champ.win : 'To be decided') + '</span>' +
       (champ ? '<span class="lbl">Runners-up &mdash; ' + esc(champ.lose) + '</span>' : '') +
     '</div>' +
