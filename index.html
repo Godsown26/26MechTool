@@ -39,12 +39,121 @@
   color-scheme:light;
 }
 *{box-sizing:border-box}
+[hidden]{display:none !important}
+
+/* Each pool carries its own colour the whole way through the app — pool board,
+   fixture list, match card, scoreboard and bracket — so a glance tells you which
+   pool you are looking at. */
+:root{
+  --pA:#2FBF71; --pB:#3D9BE9; --pC:#E8912D; --pD:#A97BD6;
+  --hot:#FF5A47;
+}
+:root[data-mode="light"]{
+  --pA:#1B8A4C; --pB:#1F6FB0; --pC:#B4661A; --pD:#7B4EA8;
+  --hot:#D93A28;
+}
+[data-pool="A"]{--pc:var(--pA)}
+[data-pool="B"]{--pc:var(--pB)}
+[data-pool="C"]{--pc:var(--pC)}
+[data-pool="D"]{--pc:var(--pD)}
+
+@keyframes riseIn{from{opacity:0; transform:translateY(10px)}to{opacity:1; transform:none}}
+@keyframes sweep{0%{background-position:0% 50%}100%{background-position:200% 50%}}
+@keyframes glowPulse{
+  0%,100%{box-shadow:0 0 0 0 rgba(255,90,71,.45)}
+  70%{box-shadow:0 0 0 9px rgba(255,90,71,0)}
+}
+@keyframes popIn{0%{transform:scale(.6); opacity:0}70%{transform:scale(1.12)}100%{transform:scale(1); opacity:1}}
 body{
   margin:0; background:var(--bg); color:var(--ink);
   font-family:var(--f-body); font-size:15px; line-height:1.5;
   -webkit-font-smoothing:antialiased;
 }
 .wrap{max-width:1280px; margin:0 auto; padding:22px 20px 56px; display:flex; flex-direction:column; gap:18px}
+
+/* ---------- app bar ---------- */
+.appbar{
+  position:sticky; top:0; z-index:40; display:flex; align-items:center; gap:12px;
+  justify-content:space-between; flex-wrap:nowrap;
+  padding:13px 14px; margin:-22px -20px 0;
+  background:linear-gradient(100deg,
+    var(--surface) 0%, color-mix(in srgb, var(--pA) 16%, var(--surface)) 22%,
+    color-mix(in srgb, var(--pB) 14%, var(--surface)) 48%,
+    color-mix(in srgb, var(--pD) 13%, var(--surface)) 72%, var(--surface) 100%);
+  background-size:200% 100%;
+  animation:sweep 22s linear infinite alternate;
+  border-bottom:1px solid var(--line);
+  box-shadow:0 6px 22px -14px rgba(0,0,0,.6);
+}
+.appbar::after{
+  content:''; position:absolute; left:0; right:0; bottom:-1px; height:2px;
+  background:linear-gradient(90deg, var(--pA), var(--pB), var(--pC), var(--pD));
+  opacity:.9;
+}
+.mark{display:flex; align-items:center; gap:11px; min-width:0; flex:1 1 auto; overflow:hidden}
+.crest{
+  display:grid; place-items:center; width:40px; height:40px; flex:none; border-radius:9px;
+  background:linear-gradient(145deg, var(--pA), var(--pB));
+  color:#fff; font-family:var(--f-display); font-weight:700; font-size:17px; line-height:1;
+  letter-spacing:-.02em; position:relative;
+  box-shadow:0 5px 16px -6px color-mix(in srgb, var(--pB) 70%, transparent);
+  transition:transform .25s cubic-bezier(.2,1.4,.4,1);
+}
+.appbar:hover .crest{transform:rotate(-6deg) scale(1.06)}
+.crest small{font-size:9px; margin-left:1px; opacity:.85}
+.titles{display:flex; flex-direction:column; min-width:0}
+.titles .eyebrow{
+  font-family:var(--f-mono); font-size:9.5px; letter-spacing:.14em; text-transform:uppercase;
+  color:var(--ink-3); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.titles .h1{
+  font-family:var(--f-display); font-weight:700; text-transform:uppercase; letter-spacing:.05em;
+  font-size:24px; line-height:1.05;
+  background:linear-gradient(92deg, var(--pA), var(--pB) 55%, var(--pD));
+  -webkit-background-clip:text; background-clip:text; color:transparent;
+}
+.actions{display:flex; align-items:center; gap:7px; flex:0 0 auto; margin-left:auto}
+.actions .whoami{
+  font-family:var(--f-mono); font-size:10px; letter-spacing:.05em; color:var(--ink-3);
+  max-width:190px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+.actions .whoami b{color:var(--accent); font-weight:600}
+.btn.signin{
+  background:linear-gradient(135deg, var(--pA), var(--pB)); color:#fff; border:0;
+  font-weight:700; letter-spacing:.1em; padding:10px 16px; border-radius:7px;
+  box-shadow:0 8px 20px -8px color-mix(in srgb, var(--pB) 80%, transparent);
+  position:relative; overflow:hidden;
+}
+.btn.signin::before{
+  content:''; position:absolute; inset:0;
+  background:linear-gradient(120deg, transparent 30%, rgba(255,255,255,.35), transparent 70%);
+  transform:translateX(-120%);
+}
+.btn.signin:hover::before{transform:translateX(120%); transition:transform .7s ease}
+.btn.signin:hover{filter:brightness(1.1); transform:translateY(-1px)}
+.btn.signin:active{transform:translateY(0) scale(.98)}
+
+.authpanel{
+  position:fixed; top:62px; right:16px; z-index:60; width:min(300px, calc(100vw - 32px));
+  background:var(--surface); border:1px solid var(--line); border-radius:5px;
+  box-shadow:0 18px 44px -18px rgba(0,0,0,.7); overflow:hidden;
+}
+.ap-h{
+  display:flex; align-items:center; justify-content:space-between; padding:10px 13px;
+  border-bottom:1px solid var(--line-2); background:var(--surface-2);
+  font-family:var(--f-mono); font-size:10.5px; letter-spacing:.12em; text-transform:uppercase;
+  color:var(--ink-2);
+}
+.ap-x{background:transparent; border:0; color:var(--ink-3); font-size:17px; cursor:pointer; line-height:1; padding:0 2px}
+.ap-x:hover{color:var(--ink)}
+.authpanel .authform{display:flex; flex-direction:column; gap:8px; padding:13px}
+.authpanel .authform input{width:100%; font-size:13px; padding:9px 10px}
+.btn.wide{width:100%; justify-content:center; padding:10px}
+.ap-f{
+  display:flex; align-items:center; justify-content:space-between; gap:8px;
+  padding:9px 13px; border-top:1px solid var(--line-2); background:var(--surface-2);
+}
+#meterwrap{display:flex; flex-direction:column; gap:7px; align-items:flex-end}
 
 /* ---------- top bar ---------- */
 .topbar{display:flex; flex-wrap:wrap; align-items:flex-end; justify-content:space-between; gap:16px}
@@ -103,13 +212,14 @@ body{
 .stage-r{display:flex; flex-direction:column; gap:10px; align-items:stretch; min-width:238px}
 .pick{
   font-family:var(--f-display); font-weight:700; text-transform:uppercase; letter-spacing:.09em;
-  font-size:26px; line-height:1; padding:26px 30px; cursor:pointer;
-  background:var(--accent); color:var(--on-accent); border:1px solid var(--accent);
-  border-radius:3px; transition:background .15s ease, transform .08s ease;
+  font-size:26px; line-height:1; padding:26px 30px; cursor:pointer; color:#fff;
+  background:linear-gradient(135deg, var(--pA), var(--pB)); border:0; border-radius:8px;
+  box-shadow:0 12px 28px -12px color-mix(in srgb, var(--pB) 75%, transparent);
+  transition:transform .12s cubic-bezier(.2,1.4,.4,1), box-shadow .2s, filter .2s;
 }
-.pick:hover:not(:disabled){background:var(--accent-2); border-color:var(--accent-2)}
-.pick:active:not(:disabled){transform:translateY(1px)}
-.pick:disabled{background:var(--surface-2); border-color:var(--line); color:var(--ink-3); cursor:not-allowed}
+.pick:hover:not(:disabled){filter:brightness(1.08); transform:translateY(-2px)}
+.pick:active:not(:disabled){transform:translateY(1px) scale(.99)}
+.pick:disabled{background:var(--surface-2); color:var(--ink-3); cursor:not-allowed; box-shadow:none}
 .kbd{font-family:var(--f-mono); font-size:11px; letter-spacing:.05em; color:var(--ink-3); text-align:center}
 .kbd b{border:1px solid var(--line); border-radius:3px; padding:1px 5px; font-weight:500; color:var(--ink-2)}
 .viewnote{
@@ -122,7 +232,9 @@ body{
   padding:9px 10px; cursor:pointer; background:transparent; color:var(--ink-2);
   border:1px solid var(--line); border-radius:3px; transition:border-color .15s, color .15s;
 }
+.btn{transition:border-color .15s, color .15s, background .15s, transform .1s}
 .btn:hover:not(:disabled){border-color:var(--ink-2); color:var(--ink)}
+.btn:active:not(:disabled){transform:translateY(1px)}
 .btn:disabled{opacity:.4; cursor:not-allowed}
 .btn.warn{color:var(--arty); border-color:var(--arty)}
 .btn.icon{flex:0 0 46px; padding-left:0; padding-right:0; text-align:center; letter-spacing:.04em}
@@ -167,24 +279,41 @@ button:focus-visible{outline:2px solid var(--brass); outline-offset:2px}
   margin:12px auto 0; max-width:46ch; font-family:var(--f-body); font-size:13px;
   color:var(--ink-3); line-height:1.65;
 }
-.tabs{display:flex; gap:6px; flex-wrap:wrap; border-bottom:1px solid var(--line); padding-bottom:0}
+.tabs{
+  display:flex; gap:4px; border-bottom:1px solid var(--line); padding:0 0 0 2px;
+  position:sticky; top:61px; z-index:30; background:var(--bg);
+  overflow-x:auto; -webkit-overflow-scrolling:touch; scrollbar-width:none;
+}
+.tabs::-webkit-scrollbar{display:none}
 .tabs button{
   font-family:var(--f-mono); font-size:11px; letter-spacing:.1em; text-transform:uppercase;
-  padding:9px 14px; background:transparent; color:var(--ink-3); cursor:pointer;
-  border:1px solid transparent; border-bottom:0; border-radius:3px 3px 0 0; margin-bottom:-1px;
+  padding:10px 15px; background:transparent; color:var(--ink-3); cursor:pointer;
+  border:0; border-radius:20px; margin:5px 0; white-space:nowrap;
+  transition:color .18s ease, background .18s ease, transform .12s ease;
 }
+.tabs button:hover{color:var(--ink); background:color-mix(in srgb, var(--pB) 12%, transparent)}
+.tabs button:active{transform:scale(.96)}
 .tabs button:hover{color:var(--ink)}
+.tabs button{position:relative}
 .tabs button.on{
-  color:var(--accent); border-color:var(--line); background:var(--surface);
-  border-bottom:1px solid var(--surface);
+  color:#fff; font-weight:700;
+  background:linear-gradient(135deg, var(--pA), var(--pB));
+  box-shadow:0 6px 16px -8px color-mix(in srgb, var(--pB) 85%, transparent);
 }
+.tabs button.on:hover{background:linear-gradient(135deg, var(--pA), var(--pB)); color:#fff}
 .tabs button .pip{
-  display:inline-block; width:6px; height:6px; border-radius:50%; background:var(--arty);
-  margin-left:6px; vertical-align:1px; animation:blip 1.4s ease-in-out infinite;
+  display:inline-block; width:7px; height:7px; border-radius:50%; background:var(--hot);
+  margin-left:7px; vertical-align:1px; animation:glowPulse 1.8s ease-out infinite;
 }
+.tabs button.on .pip{background:#fff}
 @keyframes blip{0%,100%{opacity:1}50%{opacity:.25}}
 .livedot{font-family:var(--f-mono); font-size:10px; letter-spacing:.06em; color:var(--ink-3)}
-.livedot b{color:var(--accent); font-weight:600}
+.livedot b{color:var(--accent); font-weight:700}
+.panel-h .note,.livedot{padding:3px 9px; border-radius:20px;
+  background:color-mix(in srgb, var(--pB) 12%, transparent);
+  border:1px solid color-mix(in srgb, var(--pB) 26%, transparent);}
+.livedot.ro{background:color-mix(in srgb, var(--hot) 13%, transparent);
+  border-color:color-mix(in srgb, var(--hot) 32%, transparent)}
 .livedot.ro b{color:var(--arty)}
 .btn.linky{padding:2px 7px; font-size:10px; margin-left:6px}
 
@@ -195,8 +324,19 @@ button:focus-visible{outline:2px solid var(--brass); outline-offset:2px}
 }
 .mine-note b{color:var(--accent)}
 #todaybody{padding:14px 16px; display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px}
-.mcard{border:1px solid var(--line); border-radius:4px; background:var(--surface-2); overflow:hidden}
-.mcard.live{border-color:var(--arty)}
+.mcard{
+  border:1px solid var(--line); border-radius:7px; background:var(--surface-2); overflow:hidden;
+  animation:riseIn .4s ease both; transition:border-color .2s, box-shadow .2s, transform .2s;
+  border-top:3px solid var(--pc, var(--line));
+}
+.mcard:hover{transform:translateY(-2px); box-shadow:0 14px 30px -18px rgba(0,0,0,.65)}
+#todaybody .mcard:nth-child(2){animation-delay:.06s}
+#todaybody .mcard:nth-child(3){animation-delay:.12s}
+#todaybody .mcard:nth-child(4){animation-delay:.18s}
+.mcard.live{
+  border-color:color-mix(in srgb, var(--hot) 60%, var(--line));
+  box-shadow:0 0 0 1px color-mix(in srgb, var(--hot) 25%, transparent);
+}
 .mcard.ft{opacity:.9}
 .mc-h{
   display:flex; justify-content:space-between; align-items:center; gap:8px; padding:7px 12px;
@@ -204,7 +344,7 @@ button:focus-visible{outline:2px solid var(--brass); outline-offset:2px}
   letter-spacing:.1em; text-transform:uppercase; color:var(--ink-3);
 }
 .mc-st{font-weight:600}
-.mc-st.s-live{color:var(--arty)}
+.mc-st.s-live{color:var(--hot); font-weight:700}
 .mc-st.s-ft{color:var(--accent)}
 .mc-st.s-stale{color:var(--ink-3)}
 .lv-live.stale{color:var(--ink-3); font-weight:600}
@@ -281,8 +421,10 @@ button:focus-visible{outline:2px solid var(--brass); outline-offset:2px}
 }
 .aw-h .s{font-family:var(--f-mono); font-size:10.5px; color:var(--ink-3); letter-spacing:.04em}
 .aw-lead{
-  display:flex; align-items:baseline; gap:12px; padding:12px 16px; background:var(--surface-2);
-  border-bottom:1px solid var(--line-2); flex-wrap:wrap;
+  display:flex; align-items:baseline; gap:12px; padding:15px 16px; flex-wrap:wrap;
+  border-bottom:1px solid var(--line-2);
+  background:linear-gradient(115deg,
+    color-mix(in srgb, var(--brass) 20%, var(--surface-2)), var(--surface-2) 65%);
 }
 .aw-lead .who{
   font-family:var(--f-display); font-weight:700; text-transform:uppercase;
@@ -301,7 +443,9 @@ table.aw-t th{
 }
 table.aw-t th.l,table.aw-t td.l{text-align:left}
 table.aw-t td.rk,table.aw-t td.pl,table.aw-t td.un{text-align:left}
-table.aw-t td{padding:7px 8px; border-bottom:1px solid var(--line-2); text-align:right}
+table.aw-t td{padding:7px 8px; border-bottom:1px solid var(--line-2); text-align:right;
+  transition:background .15s ease}
+table.aw-t tr:hover td{background:color-mix(in srgb, var(--pC) 10%, transparent)}
 table.aw-t tr:last-child td{border-bottom:0}
 table.aw-t td.rk{
   font-family:var(--f-mono); font-size:11px; color:var(--ink-3); padding-left:16px; width:1%;
@@ -386,19 +530,29 @@ table.aw-t td.n.big{color:var(--ink); font-weight:600; font-size:12.5px; padding
 
 /* ---------- live scoreboard ---------- */
 #livebody{padding:14px 16px; display:flex; flex-direction:column; gap:14px}
-.lv{border:1px solid var(--arty); border-radius:4px; background:var(--surface-2); overflow:hidden}
+.lv{
+  border:1px solid color-mix(in srgb, var(--hot) 55%, var(--line)); border-radius:7px;
+  background:var(--surface-2); overflow:hidden; animation:riseIn .45s ease both;
+  box-shadow:0 10px 30px -18px color-mix(in srgb, var(--hot) 60%, transparent);
+}
+.lv:nth-child(2){animation-delay:.07s}
+.lv:nth-child(3){animation-delay:.14s}
+.lv:nth-child(4){animation-delay:.21s}
 .lv-h{
   display:flex; justify-content:space-between; align-items:center; gap:10px; padding:8px 14px;
   border-bottom:1px solid var(--line); font-family:var(--f-mono); font-size:10px;
   letter-spacing:.12em; text-transform:uppercase; color:var(--ink-3);
 }
-.lv-live{color:var(--arty); font-weight:600; display:flex; align-items:center; gap:6px}
+.lv-live{color:var(--hot); font-weight:700; display:flex; align-items:center; gap:6px}
 .lv-live .dot{
-  width:7px; height:7px; border-radius:50%; background:var(--arty); animation:blip 1.4s ease-in-out infinite;
+  width:8px; height:8px; border-radius:50%; background:var(--hot);
+  animation:glowPulse 1.8s ease-out infinite;
 }
 .lv-main{
   display:grid; grid-template-columns:1fr auto 1fr; align-items:center; gap:14px;
-  padding:18px 16px; background:var(--surface);
+  padding:20px 16px; position:relative;
+  background:radial-gradient(120% 140% at 50% 0%,
+    color-mix(in srgb, var(--hot) 9%, var(--surface)), var(--surface) 70%);
 }
 .lv-team{
   font-family:var(--f-display); font-weight:700; text-transform:uppercase;
@@ -407,9 +561,12 @@ table.aw-t td.n.big{color:var(--ink); font-weight:600; font-size:12.5px; padding
 .lv-team.r{text-align:right}
 .lv-team .tbd{font-family:var(--f-body); font-weight:400; font-size:13px; text-transform:none; color:var(--ink-3)}
 .lv-score{
-  font-family:var(--f-mono); font-weight:600; font-size:clamp(30px,5vw,46px); color:var(--ink);
+  font-family:var(--f-mono); font-weight:700; font-size:clamp(32px,5.4vw,50px);
   font-variant-numeric:tabular-nums; white-space:nowrap; letter-spacing:.02em;
+  background:linear-gradient(160deg, var(--ink), color-mix(in srgb, var(--pB) 55%, var(--ink)));
+  -webkit-background-clip:text; background-clip:text; color:transparent;
 }
+.lv-score.bump{animation:popIn .5s cubic-bezier(.2,1.4,.4,1)}
 .lv-score .lv-pens{
   display:block; font-family:var(--f-mono); font-size:11px; color:var(--brass);
   letter-spacing:.04em; text-align:center; margin-top:2px;
@@ -454,16 +611,31 @@ table.aw-t td.n.big{color:var(--ink); font-weight:600; font-size:12.5px; padding
   display:flex; align-items:center; justify-content:space-between; gap:8px;
   padding:9px 12px; border-bottom:1px solid var(--line); background:var(--surface-2);
 }
-.pool.active .pool-h{background:var(--accent); border-bottom-color:var(--accent)}
+.pool .pool-h{
+  background:linear-gradient(120deg,
+    color-mix(in srgb, var(--pc, var(--accent)) 26%, var(--surface-2)),
+    var(--surface-2) 85%);
+  border-bottom-color:color-mix(in srgb, var(--pc, var(--accent)) 40%, var(--line));
+}
+.pool .pool-h .name{color:var(--pc, var(--ink))}
+.pool.active{border-color:var(--pc, var(--accent));
+  box-shadow:0 0 0 1px color-mix(in srgb, var(--pc, var(--accent)) 35%, transparent), var(--shadow)}
+.pool.active .pool-h{
+  background:linear-gradient(120deg, var(--pc, var(--accent)),
+    color-mix(in srgb, var(--pc, var(--accent)) 55%, var(--surface-2)));
+  border-bottom-color:var(--pc, var(--accent));
+}
 .pool-h .name{
   font-family:var(--f-display); font-weight:700; text-transform:uppercase; letter-spacing:.1em; font-size:19px;
 }
 .pool-h .fill{font-family:var(--f-mono); font-size:11px; letter-spacing:.06em; color:var(--ink-3)}
-.pool.active .pool-h .name,.pool.active .pool-h .fill{color:var(--on-accent)}
+.pool.active .pool-h .name,.pool.active .pool-h .fill{color:#fff}
 .slot{
   display:flex; align-items:flex-start; gap:9px; padding:9px 12px 9px 9px;
   border-bottom:1px solid var(--line-2); border-left:3px solid transparent; min-height:54px;
+  transition:background .15s ease;
 }
+.pool .slot:hover{background:color-mix(in srgb, var(--pc, var(--pB)) 10%, transparent)}
 .slot:last-child{border-bottom:0}
 .slot .idx{font-family:var(--f-mono); font-size:11px; color:var(--ink-3); padding-top:3px; min-width:16px}
 .slot .body{min-width:0; flex:1}
@@ -485,10 +657,21 @@ table.aw-t td.n.big{color:var(--ink); font-weight:600; font-size:12.5px; padding
 .slot.f-ARTY{border-left-color:var(--arty)} .slot.f-DTU{border-left-color:var(--dtu)}
 
 /* ---------- pot / result panels ---------- */
-.panel{background:var(--surface); border:1px solid var(--line); border-radius:4px; box-shadow:var(--shadow)}
+.panel{
+  background:var(--surface); border:1px solid var(--line); border-radius:7px;
+  box-shadow:var(--shadow); overflow:hidden; animation:riseIn .35s ease both;
+}
+.panel-h h3{position:relative; padding-left:11px}
+.panel-h h3::before{
+  content:''; position:absolute; left:0; top:.1em; bottom:.1em; width:4px; border-radius:3px;
+  background:linear-gradient(180deg, var(--pA), var(--pB));
+}
 .panel-h{
   display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;
-  padding:11px 16px; border-bottom:1px solid var(--line);
+  padding:13px 16px; border-bottom:1px solid var(--line);
+  background:linear-gradient(100deg,
+    color-mix(in srgb, var(--pA) 9%, var(--surface)),
+    color-mix(in srgb, var(--pB) 7%, var(--surface)) 55%, var(--surface));
 }
 .panel-h h3{
   font-family:var(--f-display); font-weight:700; text-transform:uppercase; letter-spacing:.09em;
@@ -583,7 +766,9 @@ table.fx th{
   color:var(--ink-3); text-align:left; font-weight:600; padding:10px 14px;
   border-bottom:1px solid var(--line); white-space:nowrap;
 }
-table.fx td{padding:9px 14px; border-bottom:1px solid var(--line-2); vertical-align:middle}
+table.fx td{padding:9px 14px; border-bottom:1px solid var(--line-2); vertical-align:middle;
+  transition:background .15s ease}
+table.fx tr:hover td{background:color-mix(in srgb, var(--pB) 8%, transparent)}
 table.fx tr.daybreak td{border-top:1px solid var(--line)}
 table.fx tr.phase td{
   background:var(--surface-2); font-family:var(--f-mono); font-size:10px; letter-spacing:.14em;
@@ -613,8 +798,11 @@ td.res .dash{font-family:var(--f-mono); font-size:11px; color:var(--ink-3)}
 table.fx tr.isfinal td.fixture,table.fx tr.isfinal td.stg{color:var(--brass)}
 table.fx tr.isfinal td.stg{font-weight:600}
 td.pool .plabel{
-  font-family:var(--f-mono); font-size:10px; letter-spacing:.08em; padding:2px 6px; border-radius:2px;
-  background:var(--surface-2); color:var(--ink-2); white-space:nowrap;
+  font-family:var(--f-mono); font-size:10px; letter-spacing:.08em; padding:3px 8px; border-radius:20px;
+  white-space:nowrap; font-weight:600;
+  background:color-mix(in srgb, var(--pc, var(--ink-3)) 20%, transparent);
+  color:var(--pc, var(--ink-2));
+  border:1px solid color-mix(in srgb, var(--pc, var(--ink-3)) 40%, transparent);
 }
 
 /* ---------- points table ---------- */
@@ -640,7 +828,9 @@ table.pts th{
 }
 table.pts th.tm,table.pts th.rk{text-align:left}
 table.pts th.rk{padding-left:14px}
-table.pts td{padding:7px 6px; border-bottom:1px solid var(--line-2); text-align:right}
+table.pts td{padding:7px 6px; border-bottom:1px solid var(--line-2); text-align:right;
+  transition:background .15s ease}
+table.pts tr:hover td{background:color-mix(in srgb, var(--pB) 8%, transparent)}
 table.pts tr:last-child td{border-bottom:0}
 table.pts td.rk,table.pts td.tm{text-align:left}
 td.rk{
@@ -744,7 +934,12 @@ tr.q td.tm{font-weight:700}
   border:1px solid var(--line); border-radius:3px; padding:13px 16px;
   display:flex; flex-direction:column; justify-content:center; gap:5px; background:var(--surface-2);
 }
-.bchamp.won{border-color:var(--brass)}
+.bchamp.won{
+  border-color:var(--brass);
+  background:radial-gradient(120% 160% at 20% 0%,
+    color-mix(in srgb, var(--brass) 22%, var(--surface-2)), var(--surface-2) 70%);
+  animation:riseIn .5s ease both;
+}
 .bchamp .lbl{
   font-family:var(--f-mono); font-size:10px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-3);
 }
@@ -768,6 +963,16 @@ footer{font-family:var(--f-mono); font-size:11px; color:var(--ink-3); letter-spa
   .col:nth-child(-n+2){border-bottom:1px solid var(--line-2)}
 }
 @media (max-width:720px){
+  .appbar{gap:8px; padding:10px 11px; flex-wrap:nowrap}
+  .actions #sound,.actions #voice{display:none}   /* keep the theme toggle */
+  .btn.signin{padding:9px 13px; font-size:10.5px}
+  .crest{width:32px; height:32px; font-size:14px}
+  .titles .h1{font-size:19px}
+  .titles .eyebrow{font-size:8.5px; letter-spacing:.1em}
+  .actions{gap:5px}
+  .actions .whoami{display:none}
+  .actions .btn.icon{flex:0 0 40px}
+  .tabs{top:57px}
   .btn{padding:11px 12px; font-size:11px}
   .tabs button{padding:12px 14px; font-size:11.5px}
   .mc-ctl .btn{padding:11px 13px; font-size:11px}
@@ -827,31 +1032,42 @@ footer{font-family:var(--f-mono); font-size:11px; color:var(--ink-3); letter-spa
 <body>
 <div class="wrap">
 
-  <header class="topbar">
-    <div class="brand">
-      <div class="eyebrow">24 RAPID Inter Unit Football Championship 2026&ndash;27</div>
-      <h1>Pool <span>Draw</span></h1>
+  <header class="appbar">
+    <div class="mark">
+      <span class="crest" aria-hidden="true">24<small>R</small></span>
+      <span class="titles">
+        <span class="eyebrow">Inter Unit Football Championship 2026&ndash;27</span>
+        <span class="h1">24 RAPID</span>
+      </span>
     </div>
-    <div class="topright">
+    <div class="actions">
+      <span class="whoami" id="authwho"></span>
+      <button class="btn icon" id="sound" aria-pressed="true" title="Sound effects (M)">SFX</button>
+      <button class="btn icon" id="voice" aria-pressed="true" title="Announce the drawn unit (V)">VOX</button>
       <button class="btn icon" id="mode" title="Light or dark">&#9790;</button>
-      <div class="meter">
-        <div class="count"><b id="done">0</b> of 24 teams drawn</div>
-        <div class="ticks" id="ticks"></div>
-      </div>
+      <button class="btn signin" id="authopen">Sign in</button>
+      <button class="btn" id="authout" hidden>Sign out</button>
     </div>
   </header>
 
-  <div class="authbar" id="authbar" hidden>
-    <span class="who" id="authwho"></span>
-    <button class="btn linky" id="authopen">Officer sign in</button>
-    <form class="authform" id="authform" hidden>
+  <div class="meter" id="meterwrap">
+    <div class="count"><b id="done">0</b> of 24 teams drawn</div>
+    <div class="ticks" id="ticks"></div>
+  </div>
+
+  <div class="authpanel" id="authbar" hidden>
+    <div class="ap-h">Officer sign in
+      <button class="ap-x" id="authclose" title="Close">&times;</button>
+    </div>
+    <form class="authform" id="authform">
       <input type="email" id="authemail" placeholder="Officer email" autocomplete="username">
       <input type="password" id="authpass" placeholder="Password" autocomplete="current-password">
-      <button class="btn" type="submit" id="authgo">Sign in</button>
+      <button class="btn wide" type="submit" id="authgo">Sign in</button>
     </form>
-    <button class="btn" id="diagbtn">Check connection</button>
-    <button class="btn" id="authout" hidden>Sign out</button>
-    <span class="authmsg" id="authmsg"></span>
+    <div class="ap-f">
+      <span class="authmsg" id="authmsg"></span>
+      <button class="btn linky" id="diagbtn">Check connection</button>
+    </div>
   </div>
 
   <div class="diagbox" id="diagbox" hidden></div>
@@ -945,8 +1161,6 @@ footer{font-family:var(--f-mono); font-size:11px; color:var(--ink-3); letter-spa
       <div class="minirow">
         <button class="btn" id="undo" title="Undo the last pick" disabled>Undo</button>
         <button class="btn warn" id="reset" title="Clear all four pools">Reset</button>
-        <button class="btn icon" id="sound" aria-pressed="true" title="Sound effects (M)">SFX</button>
-        <button class="btn icon" id="voice" aria-pressed="true" title="Announce the drawn unit (V)">VOX</button>
       </div>
     </div>
   </section>
@@ -1234,7 +1448,7 @@ function renderPools(justIdx){
         '</div>';
     }).join('');
     var active = cur < SEQ.length && SEQ[cur].pi === pi;
-    return '<div class="pool' + (active ? ' active' : '') + '">' +
+    return '<div class="pool' + (active ? ' active' : '') + '" data-pool="' + p.id + '">' +
       '<div class="pool-h"><div class="name">Pool ' + p.id + '</div><div class="fill">' + filled + '/6</div></div>' +
       rows + '</div>';
   }).join('');
@@ -2266,7 +2480,8 @@ function renderFixtures(){
       '<td class="date">' + fmtDate(m.date) + '</td>' +
       '<td class="time">' + m.time + ' h</td>' +
       '<td class="gnd"><span class="glabel">' + esc(m.ground || '') + '</span></td>' +
-      '<td class="pool"><span class="plabel">' + (m.pool === '—' ? '&mdash;' : 'Pool ' + m.pool) + '</span></td>' +
+      '<td class="pool" data-pool="' + (m.pool === '—' ? '' : m.pool) + '"><span class="plabel">' +
+        (m.pool === '—' ? '&mdash;' : 'Pool ' + m.pool) + '</span></td>' +
       '<td class="fixture">' + side('a') + '<span class="v">v</span>' + side('b') + '</td>' +
       '<td class="stg">' + esc(m.stage) + '</td>' +
       '<td class="res">' + (m.key
@@ -3103,6 +3318,8 @@ function applyView(){
   var waiting = !drawn && VIEW !== 'draw' && VIEW !== 'squads';
   var wp = $('waiting');
   if (wp) wp.hidden = !waiting;
+  var mw = $('meterwrap');
+  if (mw) mw.hidden = (VIEW !== 'draw');
   var panels = document.querySelectorAll('[data-panel]');
   for (var i = 0; i < panels.length; i++){
     var el = panels[i], p = el.getAttribute('data-panel');
@@ -3260,7 +3477,7 @@ function matchCard(m, R){
     ? '<input type="text" data-f="ref" data-m="' + id + '" value="' + esc(r.ref || '') + '" placeholder="Name">'
     : '<span class="rname">' + esc(r.ref || 'not recorded') + '</span>';
 
-  return '<div class="' + cls + '">' +
+  return '<div class="' + cls + '" data-pool="' + (m.pool === '—' ? '' : m.pool) + '">' +
     '<div class="mc-h"><span>M' + pad2(m.no) + ' &middot; ' + m.time + ' h &middot; ' +
       esc(m.ground || '') + '</span>' + statusChip(r, id) + '</div>' +
     '<div class="mc-score">' + side(A, m.a, 'a', 'a') +
@@ -3864,16 +4081,12 @@ var authOpen = false;
 function renderAuth(){
   var bar = $('authbar');
   if (!bar) return;
-  bar.hidden = !dbOn();
-  if (!dbOn()) return;
-  var inSess = !!dbToken;
-  $('authform').hidden = inSess || !authOpen;
-  $('authopen').hidden = inSess || authOpen;
-  $('authout').hidden = !inSess;
-  $('diagbtn').hidden = !inSess && !authOpen;
-  $('authwho').innerHTML = inSess
-    ? 'Signed in as <b>' + esc(dbEmail || '') + '</b>'
-    : 'Live scores for everyone &mdash; no sign in needed.';
+  var on = dbOn(), inSess = !!dbToken;
+  bar.hidden = !on || inSess || !authOpen;
+  $('authopen').hidden = !on || inSess;
+  $('authout').hidden = !on || !inSess;
+  $('authwho').innerHTML = !on ? ''
+    : (inSess ? 'Signed in as <b>' + esc(dbEmail || '') + '</b>' : '');
 }
 
 function applyAuthState(){
@@ -3910,7 +4123,11 @@ function runDiagnostics(){
     });
     if (!dbToken){
       lines.push('signed in: <span class="bad">no</span>');
-      hint = 'You are watching only. Sign in above with an officer account to run the draw or update matches.';
+      lines.push('write tournament: <span class="bad">NOT TESTED</span>');
+      lines.push('write squads: <span class="bad">NOT TESTED</span>');
+      hint = 'Saving was NOT checked, because you are not signed in. Press "Officer sign in" ' +
+        'above, then run this check again — you need every write line to say ok before the ' +
+        'draw will reach other phones.';
       box.innerHTML = lines.join('<br>') + '<span class="hint">' + hint + '</span>';
       return;
     }
@@ -4073,7 +4290,7 @@ function liveBoard(m, R){
       ? '<span class="lv-live stale">' + matchMinute(r) + "' &middot; not closed</span>"
       : '<span class="lv-live"><span class="dot"></span>Live <span class="lv-min" data-clock="' + id + '">' +
         matchMinute(r) + "'</span></span>");
-  return '<div class="lv">' +
+  return '<div class="lv" data-pool="' + (m.pool === '—' ? '' : m.pool) + '">' +
     '<div class="lv-h"><span>M' + pad2(m.no) + ' &middot; ' + esc(m.ground || '') +
       (m.pool === '\u2014' ? '' : ' &middot; Pool ' + m.pool) + ' &middot; ' + esc(m.stage) + '</span>' +
       clock + '</div>' +
@@ -4129,6 +4346,7 @@ function renderLive(){
   }
 
   $('livebody').innerHTML = html;
+  flashChangedScores();
   var lc = $('livecount');
   if (lc){
     lc.className = 'livedot' + (on.length ? '' : ' ro');
@@ -4266,6 +4484,23 @@ setMode(mode);
 renderTimeInputs();
 
 /* ---- match-day controls ---- */
+var lastScores = {};
+
+/* a changed scoreline should catch the eye rather than quietly redraw */
+function flashChangedScores(){
+  document.querySelectorAll('#livebody .lv').forEach(function(card, i){
+    var el = card.querySelector('.lv-score');
+    if (!el) return;
+    var txt = el.textContent, key = 'lv' + i;
+    if (lastScores[key] !== undefined && lastScores[key] !== txt){
+      el.classList.remove('bump');
+      void el.offsetWidth;
+      el.classList.add('bump');
+    }
+    lastScores[key] = txt;
+  });
+}
+
 function afterLiveChange(){
   syncScoresFromLive();
   publishState();
@@ -4523,6 +4758,7 @@ $('authform').addEventListener('submit', function(e){
     if (!res.ok){ $('authmsg').textContent = res.msg; return; }
     $('authmsg').textContent = '';
     $('authpass').value = '';
+    authOpen = false;
     applyAuthState();
     dbPull().then(function(){
       scoresLoadedFor = '';
@@ -4534,10 +4770,27 @@ $('authform').addEventListener('submit', function(e){
 });
 
 $('authopen').addEventListener('click', function(){
-  authOpen = true;
+  authOpen = !authOpen;
   renderAuth();
-  var e = $('authemail');
-  if (e) e.focus();
+  if (authOpen){
+    var e = $('authemail');
+    if (e) e.focus();
+  }
+});
+
+$('authclose').addEventListener('click', function(){
+  authOpen = false;
+  renderAuth();
+});
+
+/* clicking away closes the panel */
+document.addEventListener('click', function(e){
+  if (!authOpen) return;
+  var p = $('authbar');
+  if (p && !p.contains(e.target) && e.target !== $('authopen')) {
+    authOpen = false;
+    renderAuth();
+  }
 });
 
 $('diagbtn').addEventListener('click', runDiagnostics);
