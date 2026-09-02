@@ -1280,10 +1280,7 @@ footer{font-family:var(--f-mono); font-size:11px; color:var(--ink-3); letter-spa
     </div>
   </section>
 
-  <footer>
-    Runs entirely offline: one self-contained file with the typefaces embedded, no server, no internet.
-    Results are stored in this browser on this machine &mdash; export them before changing computers.
-  </footer>
+  <footer id="foot"></footer>
 </div>
 
 <script id="tstate" type="application/json">{}</script>
@@ -3042,6 +3039,17 @@ function serializeDoc(){
     wrap.outerHTML + '\n' + st + '\n' + js + '\n</body>\n</html>';
 }
 
+function renderFoot(){
+  var f = $('foot');
+  if (!f) return;
+  f.innerHTML = dbOn()
+    ? '24 RAPID Inter Unit Football Championship 2026&ndash;27. Scores are shared live &mdash; ' +
+      'anyone with the link sees the same thing, updating on its own. Match officers sign in to record play.'
+    : 'Runs entirely offline: one self-contained file with the typefaces embedded, no server, ' +
+      'no internet. Results are stored in this browser on this machine &mdash; export them ' +
+      'before changing computers.';
+}
+
 function setShareLabel(){
   if (typeof setLockUi === 'function') setLockUi();
   if (typeof applyAdminUi === 'function') applyAdminUi();
@@ -3320,6 +3328,7 @@ function applyView(){
   if (wp) wp.hidden = !waiting;
   var mw = $('meterwrap');
   if (mw) mw.hidden = (VIEW !== 'draw');
+  if (typeof renderFoot === 'function') renderFoot();
   var panels = document.querySelectorAll('[data-panel]');
   for (var i = 0; i < panels.length; i++){
     var el = panels[i], p = el.getAttribute('data-panel');
