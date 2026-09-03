@@ -966,6 +966,14 @@ tr.q td.tm{font-weight:700}
   animation:trophyBob 2.4s ease-in-out infinite; -webkit-text-fill-color:initial;
 }
 .confetti{position:fixed; inset:0; width:100%; height:100%; pointer-events:none; z-index:9999}
+/* A save that is being refused must never be quiet about it. */
+#dbnotice{
+  position:fixed; left:12px; right:12px; bottom:12px; z-index:9998;
+  background:var(--hot); color:#fff; padding:13px 16px; border-radius:7px;
+  font-family:var(--f-mono); font-size:12px; line-height:1.45; text-align:center;
+  box-shadow:0 14px 34px -12px rgba(0,0,0,.7);
+}
+@media (min-width:720px){ #dbnotice{left:auto; right:16px; max-width:420px; text-align:left} }
 @keyframes champPop{
   0%{transform:scale(.84); opacity:.2}
   55%{transform:scale(1.05)}
@@ -3103,7 +3111,7 @@ function renderBracket(){
    when the page is running as a published artifact, republished so every other viewer
    picks it up. Goals are not stored as a score — the score is counted from the events,
    so the feed and the scoreline can never disagree. */
-var STATE = {locked:false, picks:null, cfg:null, live:{}, squads:{}, halfMin:45};
+var STATE = {locked:false, picks:null, cfg:null, live:{}, squads:{}, squadAt:{}, halfMin:45};
 var isAdmin = true, artNs = null, publishing = false, pubQueued = false;
 var pendingMerge = false;
 var adminVerified = false;
@@ -3193,7 +3201,7 @@ function setShareLabel(){
   var el = $('sharestate');
   if (!el) return;
   el.className = 'livedot' + (isAdmin ? '' : ' ro');
-  if (artNs && isAdmin && unsaved){
+  if (isAdmin && unsaved){
     el.className = 'livedot ro';
     el.innerHTML = '<b>' + unsaved + ' change' + (unsaved === 1 ? '' : 's') +
       ' not saved</b> &middot; <button class="btn linky" id="retrybtn">Retry now</button>';
@@ -3369,6 +3377,7 @@ function mergeStates(pub, loc){
       cfg: base.cfg || mine.cfg || null,
       live: outLive,
       squads: squads,
+      squadAt: mine.squadAt || base.squadAt || {},
       halfMin: base.halfMin || mine.halfMin || 45
     },
     localAhead: ahead
@@ -3840,6 +3849,11 @@ function teamNumByName(name){
   return NAME_TO_NO[k] != null ? NAME_TO_NO[k] : null;
 }
 
+function touchSquad(n){
+  if (!STATE.squadAt) STATE.squadAt = {};
+  STATE.squadAt[n] = Date.now();
+}
+
 function addToSquad(teamNo, name){
   if (teamNo == null) return false;
   name = String(name || '').trim();
@@ -4093,25 +4107,90 @@ function awardsCsv(){
    newer stamp wins. */
 function dbOn(){ return !!(DB.url && DB.key); }
 
-var dbToken = null, dbEmail = null, dbDirty = {}, dbMeta = false, dbSquadDirty = {};
+var dbToken = null, dbEmail = null, dbRefreshTok = null, dbRefreshing = null;
+var dbDirty = {}, dbMeta = false, dbSquadDirty = {};
 var dbPolling = null, dbLastPull = 0;
 
 try {
   var _t = JSON.parse(localStorage.getItem('poolDrawAuth') || 'null');
-  if (_t && _t.token){ dbToken = _t.token; dbEmail = _t.email; }
+  if (_t && _t.token){ dbToken = _t.token; dbEmail = _t.email; dbRefreshTok = _t.refresh || null; }
 } catch (e) {}
 
 function dbBase(){ return String(DB.url || '').replace(/\/+$/, ''); }
 
-function dbFetch(path, opts){
+function dbSaveAuth(){
+  try {
+    localStorage.setItem('poolDrawAuth',
+      JSON.stringify({token: dbToken, email: dbEmail, refresh: dbRefreshTok}));
+  } catch (e) {}
+}
+
+/* An access token lasts an hour. A match day lasts longer, so when one lapses it is
+   renewed from the refresh token and the request goes again. Without this an officer
+   stays signed in to look at while every save is refused, which is how a day's work
+   disappears without a word. */
+function dbRefresh(){
+  if (!dbRefreshTok){ dbSessionLapsed(); return Promise.resolve(false); }
+  if (dbRefreshing) return dbRefreshing;
+  dbRefreshing = fetch(dbBase() + '/auth/v1/token?grant_type=refresh_token', {
+    method: 'POST',
+    headers: {'apikey': DB.key, 'Content-Type': 'application/json'},
+    body: JSON.stringify({refresh_token: dbRefreshTok})
+  }).then(function(r){ return r.json(); }).then(function(j){
+    dbRefreshing = null;
+    if (j && j.access_token){
+      dbToken = j.access_token;
+      dbRefreshTok = j.refresh_token || dbRefreshTok;
+      dbSaveAuth();
+      return true;
+    }
+    dbSessionLapsed();
+    return false;
+  }, function(){ dbRefreshing = null; return false; });
+  return dbRefreshing;
+}
+
+/* The session is gone and cannot be renewed. Say so plainly and stop pretending the
+   controls still work. Whatever was entered stays queued for the next sign in. */
+function dbSessionLapsed(){
+  dbToken = null;
+  dbRefreshTok = null;
+  try { localStorage.removeItem('poolDrawAuth'); } catch (e) {}
+  if (typeof applyAuthState === 'function') applyAuthState();
+  dbNotice('Your sign in has expired. Sign in again to save \u2014 nothing you entered has been lost.');
+}
+
+function dbNotice(msg){
+  var el = document.getElementById('dbnotice');
+  if (!el){
+    el = document.createElement('div');
+    el.id = 'dbnotice';
+    el.hidden = true;
+    document.body.appendChild(el);
+  }
+  if (!msg){ el.hidden = true; el.textContent = ''; return; }
+  el.hidden = false;
+  el.textContent = msg;
+}
+
+function dbFetch(path, opts, _retried){
   opts = opts || {};
   var h = {'apikey': DB.key, 'Content-Type': 'application/json'};
   h.Authorization = 'Bearer ' + (dbToken || DB.key);
   if (opts.headers){
     for (var k in opts.headers) h[k] = opts.headers[k];
   }
-  opts.headers = h;
-  return fetch(dbBase() + path, opts);
+  var o2 = {};
+  for (var kk in opts) o2[kk] = opts[kk];
+  o2.headers = h;
+  return fetch(dbBase() + path, o2).then(function(r){
+    if (r.status === 401 && dbToken && !_retried){
+      return dbRefresh().then(function(ok){
+        return ok ? dbFetch(path, opts, true) : r;
+      });
+    }
+    return r;
+  });
 }
 
 function dbSignIn(email, pass){
@@ -4125,8 +4204,10 @@ function dbSignIn(email, pass){
         return {ok: false, msg: (j && (j.error_description || j.msg || j.message)) || 'Sign in failed'};
       }
       dbToken = j.access_token;
+      dbRefreshTok = j.refresh_token || null;
       dbEmail = (j.user && j.user.email) || email;
-      try { localStorage.setItem('poolDrawAuth', JSON.stringify({token: dbToken, email: dbEmail})); } catch (e) {}
+      dbSaveAuth();
+      dbNotice('');
       return {ok: true};
     });
   }, function(){ return {ok: false, msg: 'No connection'}; });
@@ -4135,7 +4216,9 @@ function dbSignIn(email, pass){
 function dbSignOut(){
   dbToken = null;
   dbEmail = null;
+  dbRefreshTok = null;
   try { localStorage.removeItem('poolDrawAuth'); } catch (e) {}
+  dbNotice('');
 }
 
 /* ---- reading ---- */
@@ -4148,7 +4231,9 @@ function dbPull(){
   ]).then(function(res){
     var changed = false;
     var trow = res[0] && res[0][0];
-    if (trow && trow.data && (trow.at || 0) > (STATE.metaAt || 0)){
+    /* Anything still queued for the server is newer than anything the server can hand
+       back, so it is left alone. Overwriting it here is what lost the squads. */
+    if (!dbMeta && trow && trow.data && (trow.at || 0) > (STATE.metaAt || 0)){
       STATE.locked = !!trow.data.locked;
       STATE.picks = trow.data.picks || null;
       STATE.cfg = trow.data.cfg || null;
@@ -4157,6 +4242,7 @@ function dbPull(){
       changed = true;
     }
     (res[1] || []).forEach(function(row){
+      if (dbDirty[row.match_id]) return;
       var cur = STATE.live[row.match_id];
       if (!cur || (row.at || 0) > (cur.at || 0)){
         STATE.live[row.match_id] = row.data;
@@ -4164,15 +4250,41 @@ function dbPull(){
       }
     });
     (res[2] || []).forEach(function(row){
+      if (dbSquadDirty[row.team_no]) return;
+      if (!STATE.squadAt) STATE.squadAt = {};
       var cur = STATE.squads[row.team_no];
-      if (!cur || (row.at || 0) > (row._localAt || 0)){
-        if (JSON.stringify(cur || []) !== JSON.stringify(row.players || [])){
-          STATE.squads[row.team_no] = row.players || [];
-          changed = true;
+      var mineAt = STATE.squadAt[row.team_no] || 0;
+
+      /* A squad this device has names for but no stamp against comes from a copy saved
+         before stamps existed. There is no way to tell which side is newer, so keep
+         both rather than choose, and stamp it from here on. */
+      if (!mineAt && cur && cur.length){
+        var merged = cur.slice(), grew = false;
+        (row.players || []).forEach(function(nm){
+          for (var i = 0; i < merged.length; i++){
+            if (String(merged[i]).toLowerCase() === String(nm).toLowerCase()) return;
+          }
+          merged.push(nm);
+          grew = true;
+        });
+        STATE.squads[row.team_no] = merged;
+        STATE.squadAt[row.team_no] = Date.now();
+        if (grew || merged.length !== (row.players || []).length){
+          dbQueueSquad(row.team_no);      /* push the union back up */
         }
+        if (grew) changed = true;
+        return;
+      }
+
+      if ((row.at || 0) <= mineAt) return;
+      if (JSON.stringify(cur || []) !== JSON.stringify(row.players || [])){
+        STATE.squads[row.team_no] = row.players || [];
+        STATE.squadAt[row.team_no] = row.at || 0;
+        changed = true;
       }
     });
     dbLastPull = Date.now();
+    if (changed) saveState();
     return changed;
   }, function(){ return false; });
 }
@@ -4853,6 +4965,7 @@ function addSquadNames(teamNo, raw){
   });
   if (added){
     NAME_TO_NO = NAME_TO_NO;
+    touchSquad(teamNo);
     if (dbOn()) dbQueueSquad(teamNo);
     saveState();
     publishState();
@@ -4877,6 +4990,8 @@ $('sqbody').addEventListener('click', function(e){
   var sq = squadOf(tn);
   if (i >= 0 && i < sq.length){
     sq.splice(i, 1);
+    touchSquad(tn);
+    if (dbOn()) dbQueueSquad(tn);
     saveState();
     publishState();
     renderSquads();
