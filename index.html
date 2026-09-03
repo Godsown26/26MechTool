@@ -1989,7 +1989,20 @@ function reset(){
   STATE.locked = false;
   STATE.picks = null;
   STATE.live = {};
+  STATE.metaAt = Date.now();
   setLockUi();
+  if (dbOn()){
+    dbQueueMeta();
+    dbDirty = {};                 /* nothing local left to send for those matches */
+    /* the match rows have to go from the server as well, or the next poll hands
+       every one of them straight back */
+    dbClearMatches().then(function(ok){
+      if (!ok){
+        dbNotice('The draw was cleared here, but the old match records could not be ' +
+          'removed from the shared copy. Sign in and press Reset again.');
+      }
+    });
+  }
   publishState();
   try { localStorage.removeItem('poolDrawScores'); } catch (e) {}
   renderAll();
@@ -3369,16 +3382,28 @@ function mergeStates(pub, loc){
       });
     });
   });
-  var locked = base.locked || mine.locked;
+  /* The lock, the picks and the settings are one decision and are taken whole from
+     whichever side was written last. Choosing them field by field is what made an
+     unlocked draw lock itself again: an OR on `locked` can go from false to true but
+     never back, and the published picks always beat the local ones. Dropping metaAt
+     here also left every reload looking older than the server, so the server's copy
+     won every time. */
+  var baseAt = base.metaAt || 0, mineAt = mine.metaAt || 0;
+  var meta;
+  if (mineAt > baseAt) meta = mine;
+  else if (baseAt > mineAt) meta = base;
+  else meta = (base.picks && base.picks.length) ? base : mine;
+  if (mineAt > baseAt) ahead = true;
   return {
     state: {
-      locked: locked,
-      picks: base.picks || mine.picks || null,
-      cfg: base.cfg || mine.cfg || null,
+      locked: !!meta.locked,
+      picks: meta.picks || null,
+      cfg: meta.cfg || null,
+      metaAt: meta.metaAt || 0,
       live: outLive,
       squads: squads,
       squadAt: mine.squadAt || base.squadAt || {},
-      halfMin: base.halfMin || mine.halfMin || 45
+      halfMin: meta.halfMin || base.halfMin || mine.halfMin || 45
     },
     localAhead: ahead
   };
@@ -4283,6 +4308,19 @@ function dbPull(){
         changed = true;
       }
     });
+    /* The loop above only visits squads the server already knows about. One entered
+       on this device and never successfully sent has no row up there at all, so it
+       would never be looked at again. Queue those too. */
+    var onServer = {};
+    (res[2] || []).forEach(function(row){ onServer[row.team_no] = 1; });
+    Object.keys(STATE.squads || {}).forEach(function(n){
+      if (onServer[n]) return;
+      if (!(STATE.squads[n] || []).length) return;
+      if (!STATE.squadAt) STATE.squadAt = {};
+      if (!STATE.squadAt[n]) STATE.squadAt[n] = Date.now();
+      dbQueueSquad(n);
+    });
+
     dbLastPull = Date.now();
     if (changed) saveState();
     return changed;
@@ -4290,6 +4328,17 @@ function dbPull(){
 }
 
 /* ---- writing ---- */
+function unsentCount(){
+  return Object.keys(dbDirty).length + Object.keys(dbSquadDirty).length + (dbMeta ? 1 : 0);
+}
+
+/* PostgREST refuses an unfiltered delete, so the filter names every row. */
+function dbClearMatches(){
+  if (!dbOn() || !dbToken) return Promise.resolve(true);
+  return dbFetch('/rest/v1/matches?match_id=not.is.null', {method: 'DELETE'})
+    .then(function(r){ return r.ok; }, function(){ return false; });
+}
+
 function dbQueueMatch(id){ dbDirty[id] = true; }
 function dbQueueMeta(){ dbMeta = true; }
 function dbQueueSquad(n){ dbSquadDirty[n] = true; }
@@ -4329,11 +4378,11 @@ function dbFlush(){
   if (!jobs.length) return Promise.resolve(true);
   return Promise.all(jobs).then(function(all){
     var ok = all.every(function(x){ return x; });
-    unsaved = Object.keys(dbDirty).length + Object.keys(dbSquadDirty).length + (dbMeta ? 1 : 0);
+    unsaved = unsentCount();
     setShareLabel();
     return ok;
   }, function(){
-    unsaved = Object.keys(dbDirty).length + Object.keys(dbSquadDirty).length + (dbMeta ? 1 : 0);
+    unsaved = unsentCount();
     setShareLabel();
     return false;
   });
@@ -4435,6 +4484,9 @@ function runDiagnostics(){
 function dbStartPolling(){
   if (!dbOn() || dbPolling) return;
   dbPolling = setInterval(function(){
+    /* A queue that nothing happens to clear is how work sits unsent for hours. If
+       there is something waiting and somewhere to send it, send it. */
+    if (dbToken && unsentCount() && !retryTimer) publishState();
     dbPull().then(function(changed){
       if (!changed) return;
       scoresLoadedFor = '';
@@ -5031,6 +5083,9 @@ $('authform').addEventListener('submit', function(e){
       syncScoresFromLive();
       renderAll();
       applyView();
+      /* Anything entered before signing in has been sitting in the queue with nowhere
+         to go. Now there is somewhere. */
+      if (unsentCount()) publishState();
     });
   });
 });
@@ -5153,8 +5208,10 @@ $('unlockbtn').addEventListener('click', function(){
     return;
   }
   STATE.locked = false;
+  STATE.metaAt = Date.now();
   setLockUi();
   saveState();
+  if (dbOn()) dbQueueMeta();      /* without this the unlock never leaves this device */
   publishState();
   setView('draw');
 });
@@ -5177,6 +5234,9 @@ if (dbOn()){
     syncScoresFromLive();
     if (picks.length >= SEQ.length){ renderFixtures(); renderStandings(); renderBracket(); }
     setView(picks.length < SEQ.length ? 'draw' : (liveCount() ? 'live' : 'today'));
+    unsaved = unsentCount();
+    setShareLabel();
+    if (dbToken && unsaved) publishState();
   });
 }
 if (STATE.locked && STATE.picks && STATE.picks.length === SEQ.length){
